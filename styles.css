@@ -1,0 +1,78 @@
+/* CriticMarkup Additions: green text with underline */
+.critic-addition {
+  color: #1e8e3e;
+  text-decoration: underline;
+  text-decoration-color: #1e8e3e;
+  text-underline-offset: 2px;
+}
+
+/* CriticMarkup Deletions: green text with strikethrough, reduced opacity */
+.critic-deletion {
+  color: #1e8e3e;
+  text-decoration: line-through;
+  text-decoration-color: #1e8e3e;
+  opacity: 0.7;
+}
+
+/* CriticMarkup Highlights: yellow background */
+.critic-highlight {
+  background-color: #fef7cd;
+  border-radius: 2px;
+  padding: 1px 0;
+}
+
+/* Highlight when focused (Phase 2) */
+.critic-highlight-focused {
+  background-color: #fde68a;
+}
+
+/* Status bar mode indicator */
+.critic-mode-status {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.critic-mode-status:hover {
+  color: var(--text-accent);
+}
+
+/* Mode menu */
+.critic-mode-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: var(--layer-menu);
+  min-width: 160px;
+}
+
+.critic-mode-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+}
+
+.critic-mode-menu-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.critic-mode-menu-item.is-active {
+  color: var(--text-accent);
+}
+
+.critic-mode-menu-item .menu-icon {
+  width: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

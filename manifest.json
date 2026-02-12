@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-critic-plugin",
+  "name": "CriticMarkup",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Google Docs-style suggesting mode and comments using CriticMarkup syntax",
+  "author": "Victor Calvello",
+  "isDesktopOnly": false
+}
