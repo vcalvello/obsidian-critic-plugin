@@ -24,8 +24,10 @@ import { authorNameFacet } from "./editor/floating-toolbar";
 import { CommentsPanel, COMMENTS_VIEW_TYPE } from "./sidebar/comments-panel";
 import { addComment, saveCommentText, cancelEmptyComment, addReply } from "./comments/create-comment";
 import { resolveComment, reopenComment, resolveAllComments } from "./comments/resolve";
-import { criticGutter } from "./editor/gutter-markers";
+import { criticGutter, gutterCompartment } from "./editor/gutter-markers";
 import { criticReadingViewProcessor } from "./editor/reading-view";
+import { stripAllMarkup } from "./commands/strip";
+import { cleanClipboardHandler } from "./editor/clean-clipboard";
 
 const MODE_ICONS: Record<EditorMode, string> = {
   [EditorMode.EDITING]: "pencil",
@@ -106,10 +108,11 @@ export default class CriticPlugin extends Plugin {
       focusedCommentField,
       criticDecorationsField,
       editorModeField,
-      ...criticGutter(),
+      gutterCompartment.of(this.settings.showGutter ? criticGutter() : []),
       authorNameCompartment.of(authorNameFacet.of(this.settings.authorName)),
       suggestingModeCompartment.of([]),
       readOnlyCompartment.of(EditorState.readOnly.of(false)),
+      cleanClipboardHandler(),
       this.buildBridgePlugin(),
     ]);
 
@@ -204,6 +207,25 @@ export default class CriticPlugin extends Plugin {
       },
     });
 
+    // Strip markup commands
+    this.addCommand({
+      id: "strip-accept",
+      name: "Strip markup (accept all changes)",
+      editorCallback: (editor, view) => {
+        const cmView = (view as any)?.editor?.cm as EditorView | undefined;
+        if (cmView) stripAllMarkup(cmView, "accept");
+      },
+    });
+
+    this.addCommand({
+      id: "strip-reject",
+      name: "Strip markup (reject all changes)",
+      editorCallback: (editor, view) => {
+        const cmView = (view as any)?.editor?.cm as EditorView | undefined;
+        if (cmView) stripAllMarkup(cmView, "reject");
+      },
+    });
+
     // Register Reading View post-processor
     this.registerMarkdownPostProcessor(criticReadingViewProcessor);
 
@@ -276,6 +298,19 @@ export default class CriticPlugin extends Plugin {
     // Settings tab
     this.addSettingTab(new CriticSettingTab(this.app, this));
 
+    // Apply default mode on layout ready (delay ensures CM6 extensions are mounted)
+    this.app.workspace.onLayoutReady(() => {
+      setTimeout(() => {
+        const mode = this.settings.defaultMode;
+        // Fallback to EDITING if Suggesting requires author name
+        if (mode === EditorMode.SUGGESTING && !this.settings.authorName) {
+          this.setMode(EditorMode.EDITING);
+        } else if (mode !== EditorMode.EDITING) {
+          this.setMode(mode);
+        }
+      }, 200);
+    });
+
     // Update status bar on leaf change and track last active editor
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf) => {
@@ -294,6 +329,21 @@ export default class CriticPlugin extends Plugin {
 
   onunload() {
     // Cleanup is handled by Obsidian's plugin lifecycle
+  }
+
+  /**
+   * Reconfigure the gutter compartment in all editors based on settings.
+   */
+  reconfigureGutter(): void {
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      const cmView = (leaf.view as any)?.editor?.cm as EditorView | undefined;
+      if (!cmView) return;
+      cmView.dispatch({
+        effects: gutterCompartment.reconfigure(
+          this.settings.showGutter ? criticGutter() : []
+        ),
+      });
+    });
   }
 
   /**

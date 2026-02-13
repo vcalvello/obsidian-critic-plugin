@@ -1,10 +1,13 @@
 import { setIcon } from "obsidian";
-import { RangeSet, RangeSetBuilder, StateField } from "@codemirror/state";
+import { Compartment, RangeSet, RangeSetBuilder, StateField } from "@codemirror/state";
 import { EditorView, GutterMarker, gutter } from "@codemirror/view";
 import { CriticRange, CriticType, EditorMode } from "../types";
 import { criticRangesField } from "./state";
 import { editorModeField } from "../modes/mode-state";
 import { setFocusedCommentEffect } from "./focused-comment";
+
+/** Compartment to toggle gutter on/off from settings. */
+export const gutterCompartment = new Compartment();
 
 /**
  * Gutter marker for a comment thread.

@@ -144,10 +144,22 @@
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
+.critic-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .critic-panel-header h4 {
   margin: 0;
   font-size: var(--font-ui-medium);
   font-weight: 600;
+}
+
+.critic-panel-count {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
 .critic-panel-filters {
@@ -508,4 +520,21 @@ mark.critic-highlight {
   background-color: rgba(250, 204, 21, 0.2);
   border-radius: 2px;
   padding: 1px 2px;
+}
+
+/* ========================================
+   Phase 4: Show more button
+   ======================================== */
+
+.critic-panel-show-more {
+  text-align: center;
+  padding: 8px;
+  color: var(--text-accent);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+  border-radius: 6px;
+}
+
+.critic-panel-show-more:hover {
+  background: var(--background-modifier-hover);
 }

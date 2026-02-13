@@ -47,8 +47,12 @@ export interface CommentThread {
 
 export interface CriticPluginSettings {
   authorName: string;
+  defaultMode: EditorMode;
+  showGutter: boolean;
 }
 
 export const DEFAULT_SETTINGS: CriticPluginSettings = {
   authorName: "",
+  defaultMode: EditorMode.EDITING,
+  showGutter: true,
 };

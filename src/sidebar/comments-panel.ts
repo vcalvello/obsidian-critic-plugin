@@ -12,11 +12,14 @@ export interface PanelCallbacks extends CardCallbacks {
   onResolveAll?: () => void;
 }
 
+const CARD_RENDER_LIMIT = 50;
+
 export class CommentsPanel extends ItemView {
   private threads: CommentThread[] = [];
   private filter: ThreadFilter = "all";
   private searchQuery = "";
   private focusedId: string | null = null;
+  private displayLimit = CARD_RENDER_LIMIT;
   /** Set of comment IDs that are in pending/draft state (showing textarea). */
   private pendingCommentIds = new Set<string>();
   /** Saved textarea content for drafts, keyed by comment ID. */
@@ -25,6 +28,7 @@ export class CommentsPanel extends ItemView {
   private replyDraftTexts = new Map<string, string>();
   private callbacks: PanelCallbacks | null = null;
   private listEl: HTMLElement | null = null;
+  private headerCountEl: HTMLElement | null = null;
   private filterSelectEl: HTMLSelectElement | null = null;
   private searchInputEl: HTMLInputElement | null = null;
 
@@ -55,7 +59,9 @@ export class CommentsPanel extends ItemView {
 
     // Header
     const header = container.createDiv({ cls: "critic-panel-header" });
-    header.createEl("h4", { text: "Comments" });
+    const titleEl = header.createDiv({ cls: "critic-panel-title" });
+    titleEl.createEl("h4", { text: "Comments" });
+    this.headerCountEl = titleEl.createSpan({ cls: "critic-panel-count" });
 
     // Batch action buttons
     const actions = header.createDiv({ cls: "critic-panel-header-actions" });
@@ -86,6 +92,7 @@ export class CommentsPanel extends ItemView {
     }
     this.filterSelectEl.addEventListener("change", () => {
       this.filter = this.filterSelectEl!.value as ThreadFilter;
+      this.displayLimit = CARD_RENDER_LIMIT;
       this.renderCards();
     });
 
@@ -95,6 +102,7 @@ export class CommentsPanel extends ItemView {
     });
     this.searchInputEl.addEventListener("input", () => {
       this.searchQuery = this.searchInputEl!.value;
+      this.displayLimit = CARD_RENDER_LIMIT;
       this.renderCards();
     });
 
@@ -147,6 +155,14 @@ export class CommentsPanel extends ItemView {
    */
   focusCard(commentId: string): void {
     this.focusedId = commentId;
+
+    // If the card is beyond the current display limit, expand to include it
+    const filtered = filterThreads(this.threads, this.filter, this.searchQuery);
+    const idx = filtered.findIndex((t) => t.id === commentId);
+    if (idx >= this.displayLimit) {
+      this.displayLimit = idx + CARD_RENDER_LIMIT;
+    }
+
     this.renderCards();
 
     // Scroll card into view and focus textarea if draft
@@ -194,18 +210,35 @@ export class CommentsPanel extends ItemView {
 
     const filtered = filterThreads(this.threads, this.filter, this.searchQuery);
 
+    // Update header count
+    if (this.headerCountEl) {
+      this.headerCountEl.textContent = filtered.length > 0 ? `${filtered.length}` : "";
+    }
+
     if (filtered.length === 0) {
       const empty = this.listEl.createDiv({ cls: "critic-panel-empty" });
       empty.textContent = this.threads.length === 0 ? "No comments yet" : "No matching comments";
       return;
     }
 
-    for (const thread of filtered) {
+    const visible = filtered.slice(0, this.displayLimit);
+    for (const thread of visible) {
       const isPending = this.pendingCommentIds.has(thread.id);
       const draftText = this.draftTexts.get(thread.id);
       const replyDraftText = this.replyDraftTexts.get(thread.id);
       const card = renderCard(thread, this.callbacks, this.focusedId, isPending, draftText, replyDraftText);
       this.listEl.appendChild(card);
+    }
+
+    // "Show more" button if there are hidden cards
+    const remaining = filtered.length - visible.length;
+    if (remaining > 0) {
+      const showMoreBtn = this.listEl.createDiv({ cls: "critic-panel-show-more" });
+      showMoreBtn.textContent = `Show ${remaining} more...`;
+      showMoreBtn.addEventListener("click", () => {
+        this.displayLimit += CARD_RENDER_LIMIT;
+        this.renderCards();
+      });
     }
 
     // Restore scroll position
