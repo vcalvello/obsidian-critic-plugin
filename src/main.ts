@@ -41,12 +41,13 @@ const MODE_LABELS: Record<EditorMode, string> = {
 const authorNameCompartment = new Compartment();
 
 /**
- * Find the comment ID anchored at the cursor position, if any.
- * A highlight anchors a comment when the comment starts right after the highlight.
+ * Find the comment/suggestion ID at the cursor position, if any.
+ * Checks: highlight anchors (for comments) and suggestion ranges (addition/deletion/substitution).
  */
 function findCommentIdAtPosition(ranges: CriticRange[], pos: number): string | null {
   for (let i = 0; i < ranges.length; i++) {
     const r = ranges[i];
+    // Highlight anchor for a comment
     if (r.type === CriticType.HIGHLIGHT && pos >= r.from && pos <= r.to) {
       const next = ranges[i + 1];
       if (
@@ -58,6 +59,17 @@ function findCommentIdAtPosition(ranges: CriticRange[], pos: number): string | n
       ) {
         return next.metadata.id;
       }
+    }
+    // Suggestion ranges (addition/deletion/substitution with metadata)
+    if (
+      (r.type === CriticType.ADDITION ||
+        r.type === CriticType.DELETION ||
+        r.type === CriticType.SUBSTITUTION) &&
+      r.metadata?.id &&
+      pos >= r.from &&
+      pos <= r.to
+    ) {
+      return r.metadata.id;
     }
   }
   return null;

@@ -68,15 +68,12 @@ export function buildThreads(ranges: CriticRange[]): CommentThread[] {
     threads.push({ id, anchor, root, replies, type: "comment", status });
   }
 
-  // Build suggestion threads (only if they have replies - otherwise they're just suggestions)
+  // Build suggestion threads (always show in sidebar, like Google Docs)
   for (const root of rootSuggestions) {
     const id = root.metadata!.id;
     const replies = repliesByParent.get(id) ?? [];
-    // Only create a thread for suggestions that have comments on them
-    if (replies.length > 0) {
-      const status: CommentStatus = (root.metadata?.status as CommentStatus) ?? "open";
-      threads.push({ id, root, replies, type: "suggestion", status });
-    }
+    const status: CommentStatus = (root.metadata?.status as CommentStatus) ?? "open";
+    threads.push({ id, root, replies, type: "suggestion", status });
   }
 
   // Sort by position in document

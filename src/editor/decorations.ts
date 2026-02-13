@@ -8,7 +8,9 @@ import { CommentIndicatorWidget } from "./comment-indicator";
 
 // Decoration marks for Editing/Suggesting
 const additionMark = Decoration.mark({ class: "critic-addition" });
+const additionFocusedMark = Decoration.mark({ class: "critic-addition critic-suggestion-focused" });
 const deletionMark = Decoration.mark({ class: "critic-deletion" });
+const deletionFocusedMark = Decoration.mark({ class: "critic-deletion critic-suggestion-focused" });
 const highlightMark = Decoration.mark({ class: "critic-highlight" });
 const highlightFocusedMark = Decoration.mark({ class: "critic-highlight-focused" });
 const highlightResolvedMark = Decoration.mark({ class: "critic-highlight-resolved" });
@@ -207,9 +209,10 @@ function buildEditingDecorations(ranges: CriticRange[], focusedId: string | null
       case CriticType.ADDITION: {
         const o = getContentOffsets(range);
         if ("contentStart" in o) {
+          const isFocused = range.metadata?.id && focusedId === range.metadata.id;
           hideRange(decs, range.from, o.contentStart);
           if (o.contentStart < o.contentEnd) {
-            decs.push({ from: o.contentStart, to: o.contentEnd, decoration: additionMark });
+            decs.push({ from: o.contentStart, to: o.contentEnd, decoration: isFocused ? additionFocusedMark : additionMark });
           }
           hideRange(decs, o.contentEnd, range.to);
         }
@@ -219,9 +222,10 @@ function buildEditingDecorations(ranges: CriticRange[], focusedId: string | null
       case CriticType.DELETION: {
         const o = getContentOffsets(range);
         if ("contentStart" in o) {
+          const isFocused = range.metadata?.id && focusedId === range.metadata.id;
           hideRange(decs, range.from, o.contentStart);
           if (o.contentStart < o.contentEnd) {
-            decs.push({ from: o.contentStart, to: o.contentEnd, decoration: deletionMark });
+            decs.push({ from: o.contentStart, to: o.contentEnd, decoration: isFocused ? deletionFocusedMark : deletionMark });
           }
           hideRange(decs, o.contentEnd, range.to);
         }
@@ -231,13 +235,14 @@ function buildEditingDecorations(ranges: CriticRange[], focusedId: string | null
       case CriticType.SUBSTITUTION: {
         const o = getContentOffsets(range);
         if ("oldStart" in o) {
+          const isFocused = range.metadata?.id && focusedId === range.metadata.id;
           hideRange(decs, range.from, o.oldStart);
           if (o.oldStart < o.oldEnd) {
-            decs.push({ from: o.oldStart, to: o.oldEnd, decoration: deletionMark });
+            decs.push({ from: o.oldStart, to: o.oldEnd, decoration: isFocused ? deletionFocusedMark : deletionMark });
           }
           hideRange(decs, o.oldEnd, o.arrowEnd);
           if (o.newStart < o.newEnd) {
-            decs.push({ from: o.newStart, to: o.newEnd, decoration: additionMark });
+            decs.push({ from: o.newStart, to: o.newEnd, decoration: isFocused ? additionFocusedMark : additionMark });
           }
           hideRange(decs, o.newEnd, range.to);
         }
