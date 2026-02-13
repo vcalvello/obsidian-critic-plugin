@@ -279,20 +279,48 @@ export default class CriticPlugin extends Plugin {
     // Update status bar on leaf change and track last active editor
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf) => {
-        this.updateStatusBar();
-        // Track the last editor view for sidebar callback use
-        if (leaf) {
-          const cmView = (leaf.view as any)?.editor?.cm as EditorView | undefined;
-          if (cmView) {
-            this.lastEditorView = cmView;
-          }
-        }
+        this.syncActiveEditor(leaf);
+      })
+    );
+
+    // layout-change fires when tabs are closed/rearranged (active-leaf-change may not)
+    this.registerEvent(
+      this.app.workspace.on("layout-change", () => {
+        const leaf = this.app.workspace.activeLeaf;
+        this.syncActiveEditor(leaf ?? null);
       })
     );
   }
 
   onunload() {
     // Cleanup is handled by Obsidian's plugin lifecycle
+  }
+
+  /**
+   * Sync the sidebar and internal state when the active editor changes.
+   * Called from both active-leaf-change and layout-change events.
+   */
+  private syncActiveEditor(leaf: any): void {
+    this.updateStatusBar();
+
+    // Ignore when the comments sidebar itself becomes the active leaf
+    if (leaf?.view instanceof CommentsPanel) return;
+
+    const cmView = leaf ? (leaf.view as any)?.editor?.cm as EditorView | undefined : undefined;
+    if (cmView) {
+      this.lastEditorView = cmView;
+      // Push current ranges to sidebar so it populates on doc open
+      const panel = this.getSidebarView();
+      if (panel) {
+        const ranges = cmView.state.field(criticRangesField);
+        panel.update(ranges);
+      }
+    } else {
+      // No active editor (doc closed or non-editor leaf): clear sidebar
+      this.lastEditorView = null;
+      const panel = this.getSidebarView();
+      if (panel) panel.update([]);
+    }
   }
 
   async loadSettings() {
