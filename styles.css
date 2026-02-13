@@ -14,16 +14,27 @@
   opacity: 0.7;
 }
 
-/* CriticMarkup Highlights: yellow background */
+/* CriticMarkup Highlights: yellow background (dark mode aware) */
 .critic-highlight {
-  background-color: #fef7cd;
+  background-color: rgba(250, 204, 21, 0.2);
   border-radius: 2px;
   padding: 1px 0;
 }
 
-/* Highlight when focused (Phase 2) */
+/* Highlight when focused - visually distinct with outline */
 .critic-highlight-focused {
-  background-color: #fde68a;
+  background-color: rgba(250, 204, 21, 0.5);
+  border-radius: 2px;
+  padding: 1px 0;
+  outline: 2px solid rgba(250, 204, 21, 0.7);
+  outline-offset: 1px;
+}
+
+/* Resolved highlight: gray/desaturated, clearly different from active yellow */
+.critic-highlight-resolved {
+  background-color: rgba(128, 128, 128, 0.12);
+  border-radius: 2px;
+  padding: 1px 0;
 }
 
 /* Status bar mode indicator */
@@ -75,4 +86,291 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* ========================================
+   Phase 2: Comment system
+   ======================================== */
+
+/* Comment indicator (inline icon, subtle) */
+.critic-comment-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  vertical-align: middle;
+  margin: 0 1px;
+  color: var(--text-accent);
+  opacity: 0.7;
+}
+
+.critic-comment-icon:hover {
+  opacity: 1;
+}
+
+.critic-comment-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.critic-comment-icon.is-resolved {
+  opacity: 0.35;
+}
+
+.critic-comment-icon.is-resolved:hover {
+  opacity: 0.6;
+}
+
+
+/* Sidebar panel */
+.critic-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.critic-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 8px 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.critic-panel-header h4 {
+  margin: 0;
+  font-size: var(--font-ui-medium);
+  font-weight: 600;
+}
+
+.critic-panel-filters {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.critic-panel-filters select {
+  flex: 0 0 auto;
+  font-size: var(--font-ui-small);
+}
+
+.critic-panel-filters input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-ui-small);
+}
+
+.critic-panel-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.critic-panel-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+/* Comment cards */
+.critic-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.critic-card:hover {
+  border-color: var(--interactive-accent);
+}
+
+.critic-card.is-focused {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.critic-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 6px;
+}
+
+.critic-card-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.critic-card-author {
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+  flex: 1;
+}
+
+.critic-card-time {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.critic-card-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.critic-card-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0;
+}
+
+.critic-card-actions button:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.critic-card-body {
+  padding: 0 12px 10px;
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  color: var(--text-normal);
+  white-space: pre-wrap;
+}
+
+.critic-card-anchor {
+  padding: 6px 12px;
+  background: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--background-modifier-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.critic-card-suggestion {
+  padding: 6px 12px;
+  font-size: var(--font-ui-smaller);
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.critic-card-suggestion-old {
+  color: #d32f2f;
+  text-decoration: line-through;
+}
+
+.critic-card-suggestion-new {
+  color: #1e8e3e;
+}
+
+/* Replies */
+.critic-card-replies {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 0;
+}
+
+.critic-card-reply {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.critic-card-reply:last-child {
+  border-bottom: none;
+}
+
+.critic-card-reply-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.critic-card-reply-author {
+  font-weight: 600;
+  font-size: var(--font-ui-smaller);
+}
+
+.critic-card-reply-time {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.critic-card-reply-body {
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.critic-card-reply-input {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.critic-card-reply-input input {
+  flex: 1;
+  font-size: var(--font-ui-smaller);
+}
+
+/* Resolved card styling */
+.critic-card.is-resolved {
+  opacity: 0.6;
+}
+
+.critic-card.is-resolved:hover {
+  opacity: 0.8;
+}
+
+/* Pending comment (just created, input active) */
+.critic-card-input {
+  padding: 0 12px 10px;
+}
+
+.critic-card-input textarea {
+  width: 100%;
+  min-height: unset;
+  height: auto;
+  resize: none;
+  overflow: hidden;
+  rows: 1;
+  font-size: var(--font-ui-small);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: inherit;
+  line-height: 1.5;
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.critic-card-input-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
 }

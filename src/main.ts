@@ -1,7 +1,7 @@
 import { Menu, Notice, Plugin, setIcon } from "obsidian";
-import { EditorView } from "@codemirror/view";
-import { EditorState, Prec } from "@codemirror/state";
-import { CriticPluginSettings, DEFAULT_SETTINGS, EditorMode } from "./types";
+import { EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
+import { Compartment, EditorState, Prec } from "@codemirror/state";
+import { CriticPluginSettings, CriticRange, CriticType, DEFAULT_SETTINGS, EditorMode } from "./types";
 import { criticRangesField } from "./editor/state";
 import { criticDecorationsField } from "./editor/decorations";
 import {
@@ -19,6 +19,11 @@ import {
   rejectAllSuggestions,
 } from "./commands/accept-reject";
 import { CriticSettingTab } from "./settings/settings-tab";
+import { focusedCommentField, setFocusedCommentEffect, commentCreatedEffect } from "./editor/focused-comment";
+import { authorNameFacet } from "./editor/floating-toolbar";
+import { CommentsPanel, COMMENTS_VIEW_TYPE } from "./sidebar/comments-panel";
+import { addComment, saveCommentText, cancelEmptyComment, addReply } from "./comments/create-comment";
+import { resolveComment, reopenComment } from "./comments/resolve";
 
 const MODE_ICONS: Record<EditorMode, string> = {
   [EditorMode.EDITING]: "pencil",
@@ -32,21 +37,65 @@ const MODE_LABELS: Record<EditorMode, string> = {
   [EditorMode.VIEWING]: "Viewing",
 };
 
+/** Compartment for the authorNameFacet so we can reconfigure on settings change. */
+const authorNameCompartment = new Compartment();
+
+/**
+ * Find the comment ID anchored at the cursor position, if any.
+ * A highlight anchors a comment when the comment starts right after the highlight.
+ */
+function findCommentIdAtPosition(ranges: CriticRange[], pos: number): string | null {
+  for (let i = 0; i < ranges.length; i++) {
+    const r = ranges[i];
+    if (r.type === CriticType.HIGHLIGHT && pos >= r.from && pos <= r.to) {
+      const next = ranges[i + 1];
+      if (
+        next &&
+        next.type === CriticType.COMMENT &&
+        next.from === r.to &&
+        next.metadata?.id &&
+        !next.metadata.replyTo
+      ) {
+        return next.metadata.id;
+      }
+    }
+  }
+  return null;
+}
+
 export default class CriticPlugin extends Plugin {
   settings: CriticPluginSettings = DEFAULT_SETTINGS;
   currentMode: EditorMode = EditorMode.EDITING;
   statusBarEl: HTMLElement | null = null;
+  /** Track the last active editor view so sidebar callbacks work even when sidebar is focused. */
+  private lastEditorView: EditorView | null = null;
 
   async onload() {
     await this.loadSettings();
 
+    // Register the comments sidebar view
+    this.registerView(COMMENTS_VIEW_TYPE, (leaf) => {
+      const panel = new CommentsPanel(leaf);
+      panel.setCallbacks(this.buildSidebarCallbacks());
+      // Push current ranges on creation
+      if (this.lastEditorView) {
+        const ranges = this.lastEditorView.state.field(criticRangesField);
+        // Defer so the view is fully mounted
+        setTimeout(() => panel.update(ranges), 0);
+      }
+      return panel;
+    });
+
     // Register CM6 extensions
     this.registerEditorExtension([
       criticRangesField,
+      focusedCommentField,
       criticDecorationsField,
       editorModeField,
+      authorNameCompartment.of(authorNameFacet.of(this.settings.authorName)),
       suggestingModeCompartment.of([]),
       readOnlyCompartment.of(EditorState.readOnly.of(false)),
+      this.buildBridgePlugin(),
     ]);
 
     // Setup status bar
@@ -55,6 +104,11 @@ export default class CriticPlugin extends Plugin {
     this.updateStatusBar();
     this.statusBarEl.addEventListener("click", (e) => {
       this.showModeMenu(e);
+    });
+
+    // Ribbon icon to toggle sidebar
+    this.addRibbonIcon("message-square", "Toggle comments", () => {
+      this.toggleSidebar();
     });
 
     // Register mode commands
@@ -125,13 +179,86 @@ export default class CriticPlugin extends Plugin {
       },
     });
 
+    // Submit comment/reply from sidebar textarea via Cmd+Enter
+    this.addCommand({
+      id: "submit-comment",
+      name: "Submit comment",
+      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "Enter" }],
+      checkCallback: (checking) => {
+        const activeEl = document.activeElement;
+        if (
+          activeEl instanceof HTMLTextAreaElement &&
+          activeEl.closest(".critic-card-input")
+        ) {
+          if (!checking) {
+            activeEl.dispatchEvent(new Event("critic-submit"));
+          }
+          return true;
+        }
+        return false;
+      },
+    });
+
+    // Add comment command
+    this.addCommand({
+      id: "add-comment",
+      name: "Add comment",
+      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "m" }],
+      editorCallback: (editor, view) => {
+        if (!this.settings.authorName) {
+          new Notice("Please set your author name in CriticMarkup settings first.");
+          return;
+        }
+        if (this.currentMode === EditorMode.VIEWING) {
+          new Notice("Cannot add comments in Viewing mode.");
+          return;
+        }
+        const cmView = (view as any)?.editor?.cm as EditorView | undefined;
+        if (!cmView) return;
+        const commentId = addComment(cmView, this.settings.authorName);
+        this.openSidebarAndFocus(commentId);
+      },
+    });
+
+    // Right-click context menu: add comment
+    this.registerEvent(
+      this.app.workspace.on("editor-menu", (menu, editor, view) => {
+        if (this.currentMode === EditorMode.VIEWING) return;
+        const cmView = (view as any)?.editor?.cm as EditorView | undefined;
+        if (!cmView) return;
+        const sel = cmView.state.selection.main;
+        if (sel.empty) return;
+
+        menu.addItem((item) => {
+          item
+            .setTitle("Add comment")
+            .setIcon("message-square")
+            .onClick(() => {
+              if (!this.settings.authorName) {
+                new Notice("Please set your author name in CriticMarkup settings first.");
+                return;
+              }
+              const commentId = addComment(cmView, this.settings.authorName);
+              this.openSidebarAndFocus(commentId);
+            });
+        });
+      })
+    );
+
     // Settings tab
     this.addSettingTab(new CriticSettingTab(this.app, this));
 
-    // Update status bar on leaf change
+    // Update status bar on leaf change and track last active editor
     this.registerEvent(
-      this.app.workspace.on("active-leaf-change", () => {
+      this.app.workspace.on("active-leaf-change", (leaf) => {
         this.updateStatusBar();
+        // Track the last editor view for sidebar callback use
+        if (leaf) {
+          const cmView = (leaf.view as any)?.editor?.cm as EditorView | undefined;
+          if (cmView) {
+            this.lastEditorView = cmView;
+          }
+        }
       })
     );
   }
@@ -146,6 +273,16 @@ export default class CriticPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+    // Update the author name facet in all editors
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      const cmView = (leaf.view as any)?.editor?.cm as EditorView | undefined;
+      if (!cmView) return;
+      cmView.dispatch({
+        effects: authorNameCompartment.reconfigure(
+          authorNameFacet.of(this.settings.authorName)
+        ),
+      });
+    });
   }
 
   /**
@@ -212,5 +349,241 @@ export default class CriticPlugin extends Plugin {
     }
 
     menu.showAtMouseEvent(e);
+  }
+
+  // ========================================
+  // Comments sidebar
+  // ========================================
+
+  /**
+   * Get the comments sidebar view (if open).
+   */
+  getSidebarView(): CommentsPanel | null {
+    const leaves = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
+    if (leaves.length > 0) {
+      return leaves[0].view as CommentsPanel;
+    }
+    return null;
+  }
+
+  /**
+   * Toggle the comments sidebar.
+   */
+  async toggleSidebar(): Promise<void> {
+    const existing = this.getSidebarView();
+    if (existing) {
+      existing.leaf.detach();
+    } else {
+      await this.app.workspace.getRightLeaf(false)?.setViewState({
+        type: COMMENTS_VIEW_TYPE,
+        active: true,
+      });
+    }
+  }
+
+  /**
+   * Open sidebar and focus a specific comment card (pending input for new comment).
+   */
+  async openSidebarAndFocus(commentId: string): Promise<void> {
+    const panel = await this.ensureSidebarOpen();
+    if (panel) {
+      panel.setPendingComment(commentId);
+      panel.focusCard(commentId);
+    }
+  }
+
+  /**
+   * Open sidebar if not open and focus a card (no pending input, for indicator clicks).
+   */
+  async openSidebarAndFocusExisting(commentId: string): Promise<void> {
+    const panel = await this.ensureSidebarOpen();
+    if (panel) {
+      panel.focusCard(commentId);
+    }
+  }
+
+  /**
+   * Ensure sidebar is open and synced. Returns the panel.
+   */
+  private async ensureSidebarOpen(): Promise<CommentsPanel | null> {
+    let panel = this.getSidebarView();
+    if (!panel) {
+      await this.app.workspace.getRightLeaf(false)?.setViewState({
+        type: COMMENTS_VIEW_TYPE,
+        active: true,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      panel = this.getSidebarView();
+    }
+    if (panel) {
+      const cmView = this.lastEditorView;
+      if (cmView) {
+        const ranges = cmView.state.field(criticRangesField);
+        panel.update(ranges);
+      }
+    }
+    return panel;
+  }
+
+  /**
+   * Called when critic ranges change in any editor (via bridge ViewPlugin).
+   */
+  onRangesChanged(ranges: CriticRange[]): void {
+    const panel = this.getSidebarView();
+    if (panel) {
+      panel.update(ranges);
+    }
+  }
+
+  /**
+   * Get the last known editor view (works even when sidebar is focused).
+   */
+  getEditorView(): EditorView | null {
+    return this.lastEditorView;
+  }
+
+  /**
+   * Build a CM6 ViewPlugin that bridges editor state changes to the plugin.
+   */
+  private buildBridgePlugin() {
+    const plugin = this;
+    return ViewPlugin.fromClass(
+      class {
+        private lastRanges: CriticRange[] = [];
+        private lastCursorCommentId: string | null = null;
+
+        constructor(private view: EditorView) {
+          this.lastRanges = view.state.field(criticRangesField);
+          // Track this as the last known editor
+          plugin.lastEditorView = view;
+          plugin.onRangesChanged(this.lastRanges);
+        }
+
+        update(update: ViewUpdate) {
+          // Always update the reference to the latest view
+          plugin.lastEditorView = this.view;
+
+          const newRanges = update.state.field(criticRangesField);
+          if (newRanges !== this.lastRanges) {
+            this.lastRanges = newRanges;
+            plugin.onRangesChanged(newRanges);
+          }
+
+          // Check for commentCreatedEffect (from add-comment command)
+          for (const tr of update.transactions) {
+            for (const e of tr.effects) {
+              if (e.is(commentCreatedEffect)) {
+                plugin.openSidebarAndFocus(e.value);
+              }
+            }
+          }
+
+          // Cursor detection: auto-focus comment when cursor is inside a highlight anchor
+          if (update.selectionSet) {
+            const sel = update.state.selection.main;
+            const ranges = update.state.field(criticRangesField);
+            const commentId = findCommentIdAtPosition(ranges, sel.head);
+
+            if (commentId !== this.lastCursorCommentId) {
+              this.lastCursorCommentId = commentId;
+              const view = this.view;
+              requestAnimationFrame(() => {
+                view.dispatch({
+                  effects: setFocusedCommentEffect.of(commentId),
+                });
+              });
+            }
+          }
+
+          // Sync focused comment from state to sidebar
+          const focusedId = update.state.field(focusedCommentField, false) ?? null;
+          const prevFocusedId = update.startState.field(focusedCommentField, false) ?? null;
+          if (focusedId !== prevFocusedId) {
+            if (focusedId) {
+              // Open sidebar (if closed) and focus the card
+              plugin.openSidebarAndFocusExisting(focusedId);
+            } else {
+              // Clear focus in the sidebar
+              const panel = plugin.getSidebarView();
+              if (panel) panel.setFocusedId(null);
+            }
+          }
+
+        }
+      }
+    );
+  }
+
+  /**
+   * Build callbacks that the sidebar uses to trigger actions on the editor.
+   */
+  private buildSidebarCallbacks() {
+    return {
+      onResolve: (thread: any) => {
+        const cmView = this.getEditorView();
+        if (cmView) resolveComment(cmView, thread.root);
+      },
+      onReopen: (thread: any) => {
+        const cmView = this.getEditorView();
+        if (cmView) reopenComment(cmView, thread.root);
+      },
+      onAccept: (thread: any) => {
+        const cmView = this.getEditorView();
+        if (cmView) acceptSuggestion(cmView, thread.root);
+      },
+      onReject: (thread: any) => {
+        const cmView = this.getEditorView();
+        if (cmView) rejectSuggestion(cmView, thread.root);
+      },
+      onReply: (thread: any, text: string) => {
+        const cmView = this.getEditorView();
+        if (cmView) addReply(cmView, thread.id, text, this.settings.authorName);
+      },
+      onFocus: (thread: any) => {
+        const cmView = this.getEditorView();
+        if (!cmView) return;
+
+        // Focus the comment in editor state
+        cmView.dispatch({
+          effects: setFocusedCommentEffect.of(thread.id),
+        });
+
+        // Scroll editor so the anchor line aligns with the card's Y position
+        const pos = thread.anchor?.from ?? thread.root.from;
+        const panel = this.getSidebarView();
+        const cardEl = panel?.containerEl?.querySelector(
+          `[data-thread-id="${thread.id}"]`
+        ) as HTMLElement | null;
+
+        if (cardEl) {
+          const cardTop = cardEl.getBoundingClientRect().top;
+          const editorRect = cmView.scrollDOM.getBoundingClientRect();
+          const lineBlock = cmView.lineBlockAt(pos);
+          // Scroll so the line appears at the same viewport Y as the card
+          cmView.scrollDOM.scrollTop = lineBlock.top - (cardTop - editorRect.top);
+        } else {
+          // Fallback: scroll to start
+          cmView.dispatch({
+            effects: EditorView.scrollIntoView(pos, { y: "start", yMargin: 50 }),
+          });
+        }
+      },
+      onSaveEdit: (thread: any, text: string) => {
+        const cmView = this.getEditorView();
+        if (cmView) {
+          saveCommentText(cmView, thread.id, text);
+          const panel = this.getSidebarView();
+          if (panel) panel.removePendingComment(thread.id);
+        }
+      },
+      onCancelEmpty: (thread: any) => {
+        const cmView = this.getEditorView();
+        if (cmView) {
+          cancelEmptyComment(cmView, thread.id);
+          const panel = this.getSidebarView();
+          if (panel) panel.removePendingComment(thread.id);
+        }
+      },
+    };
   }
 }

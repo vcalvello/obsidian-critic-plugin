@@ -3,11 +3,15 @@ import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/v
 import { CriticRange, CriticType, EditorMode } from "../types";
 import { criticRangesField } from "./state";
 import { editorModeField } from "../modes/mode-state";
+import { focusedCommentField } from "./focused-comment";
+import { CommentIndicatorWidget } from "./comment-indicator";
 
 // Decoration marks for Editing/Suggesting
 const additionMark = Decoration.mark({ class: "critic-addition" });
 const deletionMark = Decoration.mark({ class: "critic-deletion" });
 const highlightMark = Decoration.mark({ class: "critic-highlight" });
+const highlightFocusedMark = Decoration.mark({ class: "critic-highlight-focused" });
+const highlightResolvedMark = Decoration.mark({ class: "critic-highlight-resolved" });
 
 /**
  * Widget that renders plain text, used in Viewing mode to completely replace
@@ -54,6 +58,43 @@ function hideRange(out: { from: number; to: number; decoration: Decoration }[], 
   if (from < to) {
     out.push({ from, to, decoration: Decoration.replace({}) });
   }
+}
+
+/**
+ * Build a map from comment ID to the adjacent highlight range.
+ * A highlight anchors a comment when highlight.to === comment.from.
+ */
+function buildHighlightAnchorMap(ranges: CriticRange[]): Map<string, CriticRange> {
+  const map = new Map<string, CriticRange>();
+  for (let i = 0; i < ranges.length; i++) {
+    const r = ranges[i];
+    if (r.type === CriticType.HIGHLIGHT) {
+      // Look for the next range: if it's a comment starting right after, this is its anchor
+      const next = ranges[i + 1];
+      if (
+        next &&
+        next.type === CriticType.COMMENT &&
+        next.from === r.to &&
+        next.metadata?.id &&
+        !next.metadata.replyTo
+      ) {
+        map.set(next.metadata.id, r);
+      }
+    }
+  }
+  return map;
+}
+
+/**
+ * Get the comment status for a given comment ID from ranges.
+ */
+function getCommentStatus(ranges: CriticRange[], commentId: string): string | undefined {
+  for (const r of ranges) {
+    if (r.metadata?.id === commentId) {
+      return r.metadata.status;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -143,9 +184,23 @@ function buildViewingDecorations(ranges: CriticRange[]): DecorationSet {
 
 /**
  * Editing/Suggesting mode: show inline decorations with styling.
+ * Now also handles comment indicators and focused highlight state.
  */
-function buildEditingDecorations(ranges: CriticRange[]): DecorationSet {
+function buildEditingDecorations(ranges: CriticRange[], focusedId: string | null): DecorationSet {
   const decs: { from: number; to: number; decoration: Decoration }[] = [];
+  const anchorMap = buildHighlightAnchorMap(ranges);
+
+  // Build a set of highlight ranges that are anchors for comments
+  const anchoredHighlights = new Set<CriticRange>();
+  for (const h of anchorMap.values()) {
+    anchoredHighlights.add(h);
+  }
+
+  // Build reverse map: highlight -> commentId
+  const highlightToCommentId = new Map<CriticRange, string>();
+  for (const [commentId, highlight] of anchorMap.entries()) {
+    highlightToCommentId.set(highlight, commentId);
+  }
 
   for (const range of ranges) {
     switch (range.type) {
@@ -192,18 +247,52 @@ function buildEditingDecorations(ranges: CriticRange[]): DecorationSet {
       case CriticType.HIGHLIGHT: {
         const o = getContentOffsets(range);
         if ("contentStart" in o) {
-          hideRange(decs, range.from, o.contentStart);
-          if (o.contentStart < o.contentEnd) {
-            decs.push({ from: o.contentStart, to: o.contentEnd, decoration: highlightMark });
+          const commentId = highlightToCommentId.get(range);
+
+          if (commentId) {
+            // This highlight is an anchor for a comment
+            const resolved = getCommentStatus(ranges, commentId) === "resolved";
+            let mark: Decoration;
+            if (focusedId === commentId) {
+              mark = highlightFocusedMark;
+            } else if (resolved) {
+              mark = highlightResolvedMark;
+            } else {
+              mark = highlightMark;
+            }
+
+            hideRange(decs, range.from, o.contentStart);
+            if (o.contentStart < o.contentEnd) {
+              decs.push({ from: o.contentStart, to: o.contentEnd, decoration: mark });
+            }
+            hideRange(decs, o.contentEnd, range.to);
+          } else {
+            // Regular highlight (no associated comment)
+            hideRange(decs, range.from, o.contentStart);
+            if (o.contentStart < o.contentEnd) {
+              decs.push({ from: o.contentStart, to: o.contentEnd, decoration: highlightMark });
+            }
+            hideRange(decs, o.contentEnd, range.to);
           }
-          hideRange(decs, o.contentEnd, range.to);
         }
         break;
       }
 
-      case CriticType.COMMENT:
+      case CriticType.COMMENT: {
+        // For root comments without a highlight anchor, show an indicator widget
+        if (range.metadata?.id && !range.metadata.replyTo && !anchorMap.has(range.metadata.id)) {
+          const resolved = range.metadata.status === "resolved";
+          const widget = new CommentIndicatorWidget(range.metadata.id, resolved);
+          decs.push({
+            from: range.from,
+            to: range.from,
+            decoration: Decoration.widget({ widget, side: 1 }),
+          });
+        }
+        // Hide the entire comment markup
         hideRange(decs, range.from, range.to);
         break;
+      }
     }
   }
 
@@ -221,9 +310,11 @@ export const criticDecorationsField = StateField.define<DecorationSet>({
     const ranges = state.field(criticRangesField);
     const mode = state.field(editorModeField);
     try {
-      return mode === EditorMode.VIEWING
-        ? buildViewingDecorations(ranges)
-        : buildEditingDecorations(ranges);
+      if (mode === EditorMode.VIEWING) {
+        return buildViewingDecorations(ranges);
+      }
+      const focusedId = state.field(focusedCommentField, false) ?? null;
+      return buildEditingDecorations(ranges, focusedId);
     } catch (e) {
       console.error("[CriticMarkup] decoration error:", e);
       return Decoration.none;
@@ -233,9 +324,11 @@ export const criticDecorationsField = StateField.define<DecorationSet>({
     const ranges = tr.state.field(criticRangesField);
     const mode = tr.state.field(editorModeField);
     try {
-      return mode === EditorMode.VIEWING
-        ? buildViewingDecorations(ranges)
-        : buildEditingDecorations(ranges);
+      if (mode === EditorMode.VIEWING) {
+        return buildViewingDecorations(ranges);
+      }
+      const focusedId = tr.state.field(focusedCommentField, false) ?? null;
+      return buildEditingDecorations(ranges, focusedId);
     } catch (e) {
       console.error("[CriticMarkup] decoration error:", e);
       return Decoration.none;

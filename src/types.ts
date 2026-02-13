@@ -34,6 +34,17 @@ export interface CriticRange {
   newContent?: string;
 }
 
+export type CommentStatus = "open" | "resolved";
+
+export interface CommentThread {
+  id: string;
+  anchor?: CriticRange;
+  root: CriticRange;
+  replies: CriticRange[];
+  type: "comment" | "suggestion";
+  status: CommentStatus;
+}
+
 export interface CriticPluginSettings {
   authorName: string;
 }

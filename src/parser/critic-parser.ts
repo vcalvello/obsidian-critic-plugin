@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { CriticType, CriticRange, CriticMetadata } from "../types";
+import { CriticType, CriticRange, CriticMetadata, CommentStatus } from "../types";
 
 // Regex patterns for each CriticMarkup type (lazy matching, supports multiline)
 const PATTERNS: { type: CriticType; regex: RegExp }[] = [
@@ -136,4 +136,48 @@ export function createSubstitution(oldText: string, newText: string, author: str
     time: Math.floor(Date.now() / 1000),
   });
   return `{~~${meta}${oldText}~>${newText}~~}`;
+}
+
+/**
+ * Create a CriticMarkup comment string with metadata.
+ * If replyTo is provided, the comment is a reply to an existing thread.
+ */
+export function createComment(text: string, author: string, replyTo?: string): string {
+  const metaObj: CriticMetadata = {
+    id: generateId(),
+    author,
+    time: Math.floor(Date.now() / 1000),
+  };
+  if (replyTo) metaObj.replyTo = replyTo;
+  const meta = serializeMetadata(metaObj);
+  return `{>>${meta}${text}<<}`;
+}
+
+/**
+ * Create a CriticMarkup highlight string (no metadata, just an anchor).
+ */
+export function createHighlight(text: string): string {
+  return `{==${text}==}`;
+}
+
+/**
+ * Produce a change spec that replaces only the JSON metadata inside a range.
+ * Returns { from, to, insert } suitable for EditorView.dispatch({ changes }).
+ */
+export function updateMetadataInRange(
+  range: CriticRange,
+  updates: Partial<Pick<CriticMetadata, "status" | "replyTo">>
+): { from: number; to: number; insert: string } {
+  // Find the metadata boundaries inside the range
+  // Range starts with opening delimiter (3 chars): {++, {--, {~~, {>>, {==
+  const metaStart = range.from + 3;
+  const sepIdx = range.rawContent.indexOf(METADATA_SEPARATOR);
+
+  if (sepIdx === -1 || !range.metadata) {
+    throw new Error("Cannot update metadata on a range without existing metadata");
+  }
+
+  const metaEnd = metaStart + sepIdx + METADATA_SEPARATOR.length;
+  const newMeta: CriticMetadata = { ...range.metadata, ...updates };
+  return { from: metaStart, to: metaEnd, insert: serializeMetadata(newMeta) };
 }
