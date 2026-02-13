@@ -381,3 +381,131 @@
   gap: 6px;
   margin-top: 6px;
 }
+
+/* ========================================
+   Phase 3: Panel batch actions
+   ======================================== */
+
+.critic-panel-header-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.critic-panel-header-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0;
+}
+
+.critic-panel-header-actions button:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.critic-panel-header-actions button svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ========================================
+   Phase 3: Gutter markers
+   ======================================== */
+
+.critic-gutter {
+  width: 20px;
+}
+
+.critic-gutter-comment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-accent);
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.critic-gutter-comment svg {
+  width: 14px;
+  height: 14px;
+}
+
+.critic-gutter-comment:hover {
+  opacity: 0.8;
+}
+
+.critic-gutter-comment.is-resolved {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.critic-gutter-comment.is-resolved:hover {
+  opacity: 0.7;
+}
+
+.critic-gutter-suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.critic-gutter-suggestion::after {
+  content: "";
+  display: block;
+  width: 3px;
+  height: 100%;
+  min-height: 16px;
+  background: #1e8e3e;
+  border-radius: 2px;
+}
+
+.critic-gutter-suggestion:hover::after {
+  opacity: 0.8;
+}
+
+/* ========================================
+   Phase 3: Reading View
+   ======================================== */
+
+ins.critic-addition {
+  color: #1e8e3e;
+  text-decoration: underline;
+  text-decoration-color: #1e8e3e;
+  text-underline-offset: 2px;
+}
+
+del.critic-deletion {
+  color: #d32f2f;
+  text-decoration: line-through;
+  text-decoration-color: #d32f2f;
+  opacity: 0.7;
+}
+
+.critic-reading-comment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 12px;
+  vertical-align: middle;
+  cursor: help;
+  color: var(--text-accent);
+}
+
+mark.critic-highlight {
+  background-color: rgba(250, 204, 21, 0.2);
+  border-radius: 2px;
+  padding: 1px 2px;
+}

@@ -23,7 +23,9 @@ import { focusedCommentField, setFocusedCommentEffect, commentCreatedEffect } fr
 import { authorNameFacet } from "./editor/floating-toolbar";
 import { CommentsPanel, COMMENTS_VIEW_TYPE } from "./sidebar/comments-panel";
 import { addComment, saveCommentText, cancelEmptyComment, addReply } from "./comments/create-comment";
-import { resolveComment, reopenComment } from "./comments/resolve";
+import { resolveComment, reopenComment, resolveAllComments } from "./comments/resolve";
+import { criticGutter } from "./editor/gutter-markers";
+import { criticReadingViewProcessor } from "./editor/reading-view";
 
 const MODE_ICONS: Record<EditorMode, string> = {
   [EditorMode.EDITING]: "pencil",
@@ -104,6 +106,7 @@ export default class CriticPlugin extends Plugin {
       focusedCommentField,
       criticDecorationsField,
       editorModeField,
+      ...criticGutter(),
       authorNameCompartment.of(authorNameFacet.of(this.settings.authorName)),
       suggestingModeCompartment.of([]),
       readOnlyCompartment.of(EditorState.readOnly.of(false)),
@@ -190,6 +193,19 @@ export default class CriticPlugin extends Plugin {
         if (cmView) rejectAllSuggestions(cmView);
       },
     });
+
+    // Resolve all comments command
+    this.addCommand({
+      id: "resolve-all-comments",
+      name: "Resolve all comments",
+      editorCallback: (editor, view) => {
+        const cmView = (view as any)?.editor?.cm as EditorView | undefined;
+        if (cmView) resolveAllComments(cmView);
+      },
+    });
+
+    // Register Reading View post-processor
+    this.registerMarkdownPostProcessor(criticReadingViewProcessor);
 
     // Submit comment/reply from sidebar textarea via Cmd+Enter
     this.addCommand({
@@ -595,6 +611,18 @@ export default class CriticPlugin extends Plugin {
           const panel = this.getSidebarView();
           if (panel) panel.removePendingComment(thread.id);
         }
+      },
+      onAcceptAll: () => {
+        const cmView = this.getEditorView();
+        if (cmView) acceptAllSuggestions(cmView);
+      },
+      onRejectAll: () => {
+        const cmView = this.getEditorView();
+        if (cmView) rejectAllSuggestions(cmView);
+      },
+      onResolveAll: () => {
+        const cmView = this.getEditorView();
+        if (cmView) resolveAllComments(cmView);
       },
     };
   }

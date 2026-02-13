@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, WorkspaceLeaf, setIcon } from "obsidian";
 import { CriticRange, CommentThread } from "../types";
 import { buildThreads } from "../comments/threads";
 import { renderCard, CardCallbacks } from "./comment-card";
@@ -6,7 +6,11 @@ import { filterThreads, ThreadFilter } from "./filters";
 
 export const COMMENTS_VIEW_TYPE = "critic-comments";
 
-export interface PanelCallbacks extends CardCallbacks {}
+export interface PanelCallbacks extends CardCallbacks {
+  onAcceptAll?: () => void;
+  onRejectAll?: () => void;
+  onResolveAll?: () => void;
+}
 
 export class CommentsPanel extends ItemView {
   private threads: CommentThread[] = [];
@@ -52,6 +56,21 @@ export class CommentsPanel extends ItemView {
     // Header
     const header = container.createDiv({ cls: "critic-panel-header" });
     header.createEl("h4", { text: "Comments" });
+
+    // Batch action buttons
+    const actions = header.createDiv({ cls: "critic-panel-header-actions" });
+
+    const acceptAllBtn = actions.createEl("button", { attr: { "aria-label": "Accept all suggestions" } });
+    setIcon(acceptAllBtn, "check-check");
+    acceptAllBtn.addEventListener("click", () => this.callbacks?.onAcceptAll?.());
+
+    const rejectAllBtn = actions.createEl("button", { attr: { "aria-label": "Reject all suggestions" } });
+    setIcon(rejectAllBtn, "x");
+    rejectAllBtn.addEventListener("click", () => this.callbacks?.onRejectAll?.());
+
+    const resolveAllBtn = actions.createEl("button", { attr: { "aria-label": "Resolve all comments" } });
+    setIcon(resolveAllBtn, "check-circle-2");
+    resolveAllBtn.addEventListener("click", () => this.callbacks?.onResolveAll?.());
 
     // Filters
     const filters = container.createDiv({ cls: "critic-panel-filters" });
